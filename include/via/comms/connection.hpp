@@ -202,7 +202,7 @@ namespace via
       /// error signal.
       void signal_error(boost::system::error_code const& error)
       {
-        if (is_error_a_disconnect(error))
+        if (connected() && is_error_a_disconnect(error))
           event_callback_(DISCONNECTED, weak_from_this());
         else
           error_callback_(error, weak_from_this());

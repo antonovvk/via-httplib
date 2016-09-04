@@ -69,6 +69,11 @@ namespace
                 << " data: " << data << std::endl;
   }
 
+  void error_handler(int code, std::string const& message)
+  {
+    std::cerr << "Connection error: " << code << " (" << message << ")" << std::endl;
+  }
+
   /// The handler for invalid HTTP requests.
   /// Outputs the last receive buffer contents
   void invalid_response_handler(via::http::rx_response const&, // response,
@@ -125,6 +130,7 @@ int main(int argc, char *argv[])
     // attach the optional handlers
     http_client->invalid_response_event(invalid_response_handler);
     http_client->connected_event(connected_handler);
+    http_client->error_event(error_handler);
     http_client->disconnected_event(disconnected_handler);
     http_client->message_sent_event(message_sent_handler);
 

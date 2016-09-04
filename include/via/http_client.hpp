@@ -74,6 +74,10 @@ namespace via
     typedef std::function <void (chunk_type const&, Container const&)>
       ChunkHandler;
 
+    /// The ErrorHandler type.
+    typedef std::function <void (int, std::string const&)>
+      ErrorHandler;
+
     /// The ConnectionHandler type.
     typedef std::function <void (void)>
       ConnectionHandler;
@@ -96,6 +100,7 @@ namespace via
 
     ResponseHandler   http_response_handler_; ///< the response callback function
     ChunkHandler      http_chunk_handler_;    ///< the chunk callback function
+    ErrorHandler      http_error_handler_;    ///< the connection error function
     ResponseHandler   http_invalid_handler_;  ///< the invalid callback function
     ConnectionHandler connected_handler_;     ///< the connected callback function
     ConnectionHandler disconnected_handler_;  ///< the disconnected callback function
@@ -185,15 +190,13 @@ namespace via
     /// Handle a diconnect on the underlying connection.
     void disconnected_handler()
     {
-      if (connection_->connected())
-      {
-        connection_->set_connected(false);
+      assert(connection_->connected());
 
-        if (disconnected_handler_)
-          disconnected_handler_();
+      connection_->set_connected(false);
+      connection_->close();
 
-        connection_->close();
-      }
+      if (disconnected_handler_)
+        disconnected_handler_();
 
       // attempt to reconnect in period_ miliseconds
       if (period_ > 0)
@@ -252,14 +255,26 @@ namespace via
       }
     }
 
+    /// Callback function for a comms::connection error.
+    /// @param ptr a weak pointer to this http_client.
+    /// @param error the boost error_code.
+    /// @param weak_ptr a weak ponter to the underlying comms connection.
+    static void error_callback(weak_pointer ptr, const boost::system::error_code &error,
+                               typename connection_type::weak_pointer weak_ptr)
+    {
+      shared_pointer pointer(ptr.lock());
+      if (pointer)
+        pointer->error_handler(error, weak_ptr);
+    }
+
     /// Receive an error from the underlying comms connection.
     /// @param error the boost error_code.
-    // @param weak_ptr a weak pointer to the underlying comms connection.
-    static void error_handler(const boost::system::error_code &error,
-                          typename connection_type::weak_pointer) // weak_ptr)
+    /// @param weak_ptr a weak pointer to the underlying comms connection.
+    void error_handler(const boost::system::error_code &error,
+                       typename connection_type::weak_pointer) // weak_ptr)
     {
-      std::cerr << "error_handler" << std::endl;
-      std::cerr << error <<  std::endl;
+      if (http_error_handler_)
+        http_error_handler_(error.value(), error.message());
     }
 
     /// Constructor.
@@ -281,6 +296,7 @@ namespace via
       rx_buffer_(),
       http_response_handler_(response_handler),
       http_chunk_handler_(chunk_handler),
+      http_error_handler_(),
       http_invalid_handler_(),
       connected_handler_(),
       disconnected_handler_(),
@@ -311,10 +327,10 @@ namespace via
       shared_pointer client_ptr(new http_client(io_service, response_handler,
                                             chunk_handler, rx_buffer_size));
       weak_pointer ptr(client_ptr);
-      client_ptr->connection_->set_error_callback([]
+      client_ptr->connection_->set_error_callback([ptr]
         (const boost::system::error_code &error,
          typename connection_type::weak_pointer weak_ptr)
-           { error_handler(error, weak_ptr); });
+           { error_callback(ptr, error, weak_ptr); });
       client_ptr->connection_->set_event_callback([ptr]
         (int event, typename connection_type::weak_pointer weak_ptr)
            { event_callback(ptr, event, weak_ptr); });
@@ -348,6 +364,11 @@ namespace via
 
     ////////////////////////////////////////////////////////////////////////
     // Event Handlers
+
+    /// Connect the error callback function.
+    /// @param handler the handler for an error received.
+    void error_event(ErrorHandler handler) NOEXCEPT
+    { http_error_handler_ = handler; }
 
     /// Connect the invalid response received callback function.
     /// @param handler the handler for an invalid response received.

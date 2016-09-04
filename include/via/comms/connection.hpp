@@ -204,7 +204,8 @@ namespace via
       {
         if (connected() && is_error_a_disconnect(error))
           event_callback_(DISCONNECTED, weak_from_this());
-        else
+
+        if (error.value() != boost::asio::error::eof)
           error_callback_(error, weak_from_this());
       }
 
